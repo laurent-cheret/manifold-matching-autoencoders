@@ -32,6 +32,11 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+.claude/
+
+# Internal files
+implementation_plan.md.resolved
+TOPO_COMPARE_WORKING_Dec2025.ipynb
 
 # Optuna
 *.db
