@@ -37,6 +37,7 @@ Thumbs.db
 # Internal files
 implementation_plan.md.resolved
 TOPO_COMPARE_WORKING_Dec2025.ipynb
+*.pdf
 
 # Optuna
 *.db
