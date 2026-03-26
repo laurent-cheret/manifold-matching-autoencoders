@@ -61,7 +61,7 @@ def load_mnist_base(config, dataset_cls, with_embeddings=False, return_indices=F
 
     train_emb, val_emb, test_emb = None, None, None
     if with_embeddings:
-        n_components = config.get("mmae_n_components", 80)
+        n_components = config.get("mmae_n_components", config.get("input_dim"))
         train_emb, val_emb, test_emb = compute_pca_embeddings(
             train_data, test_data, n_components, seed=seed, val_data=val_data
         )

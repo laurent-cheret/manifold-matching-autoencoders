@@ -58,7 +58,7 @@ def load_cifar10(config, with_embeddings=False, return_indices=False):
 
     train_emb, val_emb, test_emb = None, None, None
     if with_embeddings:
-        n_components = config.get("mmae_n_components", 80)
+        n_components = config.get("mmae_n_components", config.get("input_dim"))
         train_emb, val_emb, test_emb = compute_pca_embeddings(
             train_data, test_data, n_components, seed=seed, val_data=val_data
         )

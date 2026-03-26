@@ -72,7 +72,7 @@ def load_coil20(config, with_embeddings=False, return_indices=False):
 
     train_emb, val_emb, test_emb = None, None, None
     if with_embeddings:
-        n_components = config.get("mmae_n_components", 80)
+        n_components = config.get("mmae_n_components", config.get("input_dim"))
         train_flat = train_data.reshape(len(train_data), -1)
         val_flat = val_data.reshape(len(val_data), -1)
         test_flat = test_data.reshape(len(test_data), -1)

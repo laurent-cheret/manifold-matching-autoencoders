@@ -101,7 +101,6 @@ DATASET_CONFIGS = {
         "input_shape": None,
         "n_samples": 10000,
         "noise": 0.05,
-        "mmae_n_components": 4,  # Full dimensionality since it's already 4D
     },
     "mammoth": {
         "input_dim": 3,
@@ -110,7 +109,6 @@ DATASET_CONFIGS = {
         "arch_type": "mlp",
         "input_shape": None,
         "n_samples": 50000,
-        "mmae_n_components": 3,
     },
     "branching_tree": {
         "input_dim": 100,
@@ -137,7 +135,6 @@ DATASET_CONFIGS = {
         "arch_type": "mlp",
         "input_shape": None,
         "n_samples": None,
-        "mmae_n_components": 3,
     },
     
 
@@ -203,7 +200,6 @@ MODEL_CONFIGS = {
     },
     "mmae": {
         "mmae_lambda": 1.0,
-        "mmae_n_components": 80,
     },
     "spae": {
         'spae_lambda': 1.0,
@@ -211,18 +207,15 @@ MODEL_CONFIGS = {
     },
     "mmae_recon": {
         "mmae_lambda": 1.0,
-        "mmae_n_components": 80,
         "n_interp_steps": 5,
     },
     "mmae_rank": {
         "mmae_lambda": 1.0,
-        "mmae_n_components": 80,
         "n_triplets": 256,
-        "use_triplet_rank": True,  # False for soft rank correlation
+        "use_triplet_rank": True,
     },
     "mmae_local": {
         "mmae_lambda": 1.0,
-        "mmae_n_components": 80,
         "k_neighbors": 10,
     },
     "mmae_knn": {
