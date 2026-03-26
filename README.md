@@ -2,7 +2,7 @@
 
 Official code for **"Manifold Matching via Autoencoders"** (ICML submission).
 
-Benchmarks topology-preserving autoencoders across synthetic, image, and biological datasets. Implements MMAE alongside TopoAE, RTD-AE, GeomAE, GGAE, and a vanilla baseline.
+Benchmarks topology-preserving autoencoders across synthetic, image, and biological datasets. Implements MMAE alongside TopoAE, RTD-AE, GeomAE, GGAE, SPAE, and a vanilla baseline.
 
 ---
 
@@ -88,6 +88,7 @@ TOPO_COMPARE/
 │   ├── rtd_ae.py               # RTD-AE (Trofimov et al., ICLR 2023)
 │   ├── geom_ae.py              # GeomAE (Nazari et al., ICML 2023)
 │   ├── ggae.py                 # GGAE (Lim et al., ICML 2024)
+│   ├── spae.py                 # SPAE (Structure-Preserving AE, pairwise distance ratios)
 │   ├── vanilla_ae.py           # Vanilla AE (reconstruction only)
 │   └── ...
 ├── data/                       # Data loaders (auto-download)
