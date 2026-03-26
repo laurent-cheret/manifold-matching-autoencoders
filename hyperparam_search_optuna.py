@@ -109,7 +109,7 @@ class HyperparameterSearch:
         
         # Common hyperparameters
         params['learning_rate'] = trial.suggest_float('learning_rate', self.lr_min, self.lr_max, log=True)
-        params['batch_size'] = trial.suggest_categorical('batch_size', self.batch_sizes)
+        params['batch_size'] = trial.suggest_int('batch_size', 16, 512, log=True)
         
         # Model-specific hyperparameters
         if self.model_name == 'mmae':
