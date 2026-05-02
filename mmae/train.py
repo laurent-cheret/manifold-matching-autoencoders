@@ -60,6 +60,7 @@ def train_run(
     seed: int = 42,
     device: str = "auto",
     snapshot_every: int = 0,
+    mm_normalize: bool = True,
     snapshot_split: str = "test",
     n_samples: Optional[int] = None,
     verbose: bool = True,
@@ -96,6 +97,7 @@ def train_run(
     model = Autoencoder(
         input_dim=bundle.input_dim, latent_dim=latent_dim,
         hidden_dims=hidden_dims, regularizer=regularizer, lam=lam,
+        mm_normalize=mm_normalize,
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 

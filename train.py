@@ -43,6 +43,10 @@ def parse_args():
                    help="Dimensionality of the reference embedding (2 or 3 used for plotting)")
     p.add_argument("--lam", type=float, default=1.0,
                    help="Weight on the manifold-matching term (lambda)")
+    p.add_argument("--mm_normalize", choices=["zscore", "none"], default="zscore",
+                   help="How to compare pairwise distances. 'zscore' standardizes "
+                        "both distance matrices (scale-invariant; default). 'none' "
+                        "matches raw Euclidean distances directly.")
 
     p.add_argument("--latent_dim", type=int, default=2)
     p.add_argument("--hidden_dims", type=int, nargs="+", default=[512, 256, 128])
@@ -81,6 +85,7 @@ def main():
         reference=args.reference,
         ref_dim=args.ref_dim,
         lam=args.lam,
+        mm_normalize=(args.mm_normalize == "zscore"),
         latent_dim=args.latent_dim,
         hidden_dims=tuple(args.hidden_dims),
         epochs=args.epochs,
