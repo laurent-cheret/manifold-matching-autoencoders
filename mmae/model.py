@@ -36,14 +36,20 @@ class MLPEncoder(nn.Module):
 class MLPDecoder(nn.Module):
     """Symmetric MLP decoder.
 
-    BN sits between hidden layers only. The final Linear (reconstruction
-    output) has no BN/activation -- the reconstruction loss compares it
-    directly to the standardized input.
+    BN sits between hidden layers only. The output activation is configurable:
+    - 'tanh' (default): bounds reconstruction to [-1, 1]; pair with data
+      normalized to the same range.
+    - 'sigmoid': bounds reconstruction to [0, 1]; pair with data in that range.
+    - 'none': raw linear output; pair with z-scored data.
     """
 
     def __init__(self, latent_dim, output_dim, hidden_dims=(512, 256, 128),
-                 batchnorm: bool = True):
+                 batchnorm: bool = True, output_activation: str = "tanh"):
         super().__init__()
+        if output_activation not in ("tanh", "sigmoid", "none"):
+            raise ValueError(
+                f"output_activation must be 'tanh', 'sigmoid', or 'none'; got {output_activation!r}"
+            )
         layers = []
         in_dim = latent_dim
         for h in reversed(hidden_dims):
@@ -52,7 +58,12 @@ class MLPDecoder(nn.Module):
                 layers.append(nn.BatchNorm1d(h))
             layers.append(nn.ReLU(inplace=True))
             in_dim = h
-        layers.append(nn.Linear(in_dim, output_dim))  # no BN/activation here
+        layers.append(nn.Linear(in_dim, output_dim))
+        if output_activation == "tanh":
+            layers.append(nn.Tanh())
+        elif output_activation == "sigmoid":
+            layers.append(nn.Sigmoid())
+        # 'none' = no activation appended
         self.net = nn.Sequential(*layers)
 
     def forward(self, z):
@@ -89,21 +100,26 @@ class Autoencoder(nn.Module):
     provided and regularizer == 'mmae', the loss is
     `recon_mse + lam * manifold_matching_loss(z, ref, normalize=mm_normalize)`.
 
-    BatchNorm is on by default (between hidden layers); pass `batchnorm=False`
-    for the un-normalized network.
+    Defaults match what worked in the original 2024 setup:
+        BatchNorm between hidden layers, Tanh on the reconstruction output
+        (which expects data normalized to [-1, 1]).
     """
 
     def __init__(self, input_dim, latent_dim, hidden_dims=(512, 256, 128),
                  regularizer="mmae", lam=1.0, mm_normalize: bool = True,
-                 batchnorm: bool = True):
+                 batchnorm: bool = True, output_activation: str = "tanh"):
         super().__init__()
         assert regularizer in ("none", "mmae"), f"unknown regularizer: {regularizer}"
         self.encoder = MLPEncoder(input_dim, latent_dim, hidden_dims, batchnorm=batchnorm)
-        self.decoder = MLPDecoder(latent_dim, input_dim, hidden_dims, batchnorm=batchnorm)
+        self.decoder = MLPDecoder(
+            latent_dim, input_dim, hidden_dims,
+            batchnorm=batchnorm, output_activation=output_activation,
+        )
         self.regularizer = regularizer
         self.lam = lam
         self.mm_normalize = mm_normalize
         self.batchnorm = batchnorm
+        self.output_activation = output_activation
         self.recon_loss = nn.MSELoss()
 
     def encode(self, x):

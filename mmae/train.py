@@ -1,9 +1,10 @@
-"""Training loop with optional per-epoch latent snapshots (for animations)."""
+"""Training loop with optional per-epoch latent snapshots and best-model checkpointing."""
 
 from __future__ import annotations
 
+import copy
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
@@ -33,6 +34,8 @@ class Result:
     ref_val: Optional[np.ndarray] = None
     ref_test: Optional[np.ndarray] = None
     snapshot_split: str = "test"
+    best_epoch: int = 0                   # epoch with the lowest val_total
+    best_val_total: float = float("inf")
 
 
 def _encode_dataset(model, X, device, batch_size=512):
@@ -62,11 +65,20 @@ def train_run(
     snapshot_every: int = 0,
     mm_normalize: bool = True,
     batchnorm: bool = True,
+    output_activation: str = "tanh",
+    checkpoint: bool = True,
     snapshot_split: str = "test",
     n_samples: Optional[int] = None,
     verbose: bool = True,
 ) -> Result:
-    """Run a full training session and return model + history (+ snapshots)."""
+    """Run a full training session and return model + history (+ snapshots).
+
+    Best-model checkpointing: when `checkpoint=True` (default) the state with
+    the lowest validation total loss is kept and restored after the final
+    epoch. The returned `Result.model` is therefore the best model seen, not
+    necessarily the last-epoch model. `Result.best_epoch` records which epoch
+    produced it.
+    """
     if device == "auto":
         device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -99,6 +111,7 @@ def train_run(
         input_dim=bundle.input_dim, latent_dim=latent_dim,
         hidden_dims=hidden_dims, regularizer=regularizer, lam=lam,
         mm_normalize=mm_normalize, batchnorm=batchnorm,
+        output_activation=output_activation,
     ).to(device)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
@@ -107,7 +120,8 @@ def train_run(
         print(
             f"Training {regularizer} AE on {dataset} | "
             f"latent_dim={latent_dim} | epochs={epochs} | "
-            f"batch_size={batch_size} | lr={lr} | params={n_params:,} | device={device}"
+            f"batch_size={batch_size} | lr={lr} | params={n_params:,} | "
+            f"output_activation={output_activation} | device={device}"
         )
 
     snap_X, snap_y = (
@@ -121,6 +135,11 @@ def train_run(
 
     history = {"train_total": [], "train_recon": [], "train_mm": [],
                "val_total": [], "val_recon": [], "val_mm": []}
+
+    # Best-model tracking.
+    best_val_total = float("inf")
+    best_state = None
+    best_epoch = 0
 
     for epoch in range(1, epochs + 1):
         model.train()
@@ -150,23 +169,39 @@ def train_run(
                 for k, v in comps.items():
                     if k in v_agg:
                         v_agg[k].append(v)
-        history["val_total"].append(float(np.mean(v_agg["total"])) if v_agg["total"] else float("nan"))
+        val_total = float(np.mean(v_agg["total"])) if v_agg["total"] else float("nan")
+        history["val_total"].append(val_total)
         history["val_recon"].append(float(np.mean(v_agg["recon"])) if v_agg["recon"] else float("nan"))
         history["val_mm"].append(float(np.mean(v_agg["mm"])) if v_agg["mm"] else float("nan"))
+
+        # Checkpoint: save best model state seen so far.
+        if checkpoint and not np.isnan(val_total) and val_total < best_val_total:
+            best_val_total = val_total
+            best_epoch = epoch
+            best_state = {k: v.detach().cpu().clone() for k, v in model.state_dict().items()}
 
         if snapshot_every and (epoch % snapshot_every == 0 or epoch == epochs):
             z = _encode_dataset(model, snap_X, device)
             snapshots.append((epoch, z, snap_y.copy()))
 
         if verbose and (epoch % max(1, epochs // 10) == 0 or epoch == 1 or epoch == epochs):
-            msg = f"  epoch {epoch:>4d}/{epochs}  train={history['train_total'][-1]:.4f}  val={history['val_total'][-1]:.4f}"
+            msg = f"  epoch {epoch:>4d}/{epochs}  train={history['train_total'][-1]:.4f}  val={val_total:.4f}"
             if regularizer == "mmae":
                 msg += f"  recon={history['train_recon'][-1]:.4f}  mm={history['train_mm'][-1]:.4f}"
             print(msg)
+
+    # Restore best model so callers see the checkpointed weights.
+    if checkpoint and best_state is not None:
+        model.load_state_dict(best_state)
+        if verbose:
+            print(f"Restored best model from epoch {best_epoch} (val_total={best_val_total:.4f})")
+    else:
+        best_epoch = epochs
 
     return Result(
         model=model, bundle=bundle, history=history, snapshots=snapshots, device=device,
         reference_method=ref_method_used,
         ref_train=ref_train, ref_val=ref_val, ref_test=ref_test,
         snapshot_split=snapshot_split,
+        best_epoch=best_epoch, best_val_total=best_val_total,
     )

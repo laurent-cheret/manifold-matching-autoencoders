@@ -3,7 +3,7 @@
 
 Examples
 --------
-    # MMAE with PCA reference (defaults)
+    # MMAE with PCA reference (defaults: tanh decoder, [-1,1] data, BN on)
     python train.py --dataset mnist --epochs 50
 
     # Vanilla AE baseline (regularizer turned off)
@@ -21,6 +21,9 @@ Examples
 
     # Use the full mammoth dataset (~1M points; needs GPU)
     python train.py --dataset mammoth --n_samples 0 --epochs 30
+
+    # Lower LR + raw-distance matching
+    python train.py --dataset mnist --lr 1e-4 --mm_normalize none --lam 0.1
 """
 
 import argparse
@@ -29,6 +32,7 @@ import os
 import time
 
 from mmae import train_run, list_datasets
+from mmae.train import _encode_dataset
 from mmae.viz import plot_latents, make_latent_gif
 
 
@@ -50,6 +54,13 @@ def parse_args():
     p.add_argument("--batchnorm", choices=["on", "off"], default="on",
                    help="BatchNorm1d between hidden Linear layers (default: on). "
                         "Never applied to the bottleneck or reconstruction outputs.")
+    p.add_argument("--output_activation", choices=["tanh", "sigmoid", "none"],
+                   default="tanh",
+                   help="Output activation on the decoder. Default 'tanh' matches "
+                        "the [-1, 1] data scaling used by the bundled loaders. "
+                        "Use 'none' if you've replaced the data with z-scored inputs.")
+    p.add_argument("--no_checkpoint", action="store_true",
+                   help="Disable best-model checkpointing (use last-epoch weights).")
 
     p.add_argument("--latent_dim", type=int, default=2)
     p.add_argument("--hidden_dims", type=int, nargs="+", default=[512, 256, 128])
@@ -90,6 +101,8 @@ def main():
         lam=args.lam,
         mm_normalize=(args.mm_normalize == "zscore"),
         batchnorm=(args.batchnorm == "on"),
+        output_activation=args.output_activation,
+        checkpoint=(not args.no_checkpoint),
         latent_dim=args.latent_dim,
         hidden_dims=tuple(args.hidden_dims),
         epochs=args.epochs,
@@ -102,7 +115,8 @@ def main():
         n_samples=args.n_samples,
     )
     elapsed = time.time() - start
-    print(f"Training finished in {elapsed:.1f}s")
+    print(f"Training finished in {elapsed:.1f}s (best epoch {result.best_epoch}, "
+          f"val_total={result.best_val_total:.4f})")
 
     if args.no_save:
         return
@@ -116,20 +130,15 @@ def main():
     with open(os.path.join(out_dir, "history.json"), "w") as f:
         json.dump(result.history, f, indent=2)
 
-    final_z = result.snapshots[-1][1] if result.snapshots else None
-    if final_z is None:
-        from mmae.train import _encode_dataset
-        final_z = _encode_dataset(result.model, result.bundle.X_test, result.device)
-        final_y = result.bundle.y_test
-    else:
-        final_y = result.snapshots[-1][2]
+    # Always re-encode the test set with the (best, restored) model so the
+    # final plot shows the checkpointed weights, not the last-epoch latent.
+    final_z = _encode_dataset(result.model, result.bundle.X_test, result.device)
+    final_y = result.bundle.y_test
 
     title = f"{args.dataset} - {args.regularizer}"
     if args.regularizer == "mmae":
-        title += f" - latent ({args.latent_dim}D)"
+        title += f" - latent ({args.latent_dim}D) - epoch {result.best_epoch}"
 
-    # Show side-by-side reference comparison if we have a reference (regularizer=mmae)
-    # and the user didn't disable it.
     ref_panel_kwargs = {}
     if (not args.no_compare) and result.ref_test is not None:
         ref_panel_kwargs = {

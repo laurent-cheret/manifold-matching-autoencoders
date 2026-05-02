@@ -42,3 +42,4 @@ TOPO_COMPARE_WORKING_Dec2025.ipynb
 # Optuna
 *.db
 optuna.log
+legacy/ 

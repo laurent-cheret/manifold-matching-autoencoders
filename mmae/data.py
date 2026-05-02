@@ -5,8 +5,9 @@ Four datasets are bundled:
     - spheres       : 11 nested spheres in 101D (TopoAE-style synthetic)
     - mammoth       : 3D point cloud (Smithsonian mammoth scan)
 
-Each loader returns a `Bundle` namedtuple with arrays + metadata so callers can
-attach a reference embedding on top.
+All loaders normalize features to roughly [-1, 1] so the data range matches
+the Tanh decoder output. Each loader returns a `Bundle` with arrays + metadata
+so callers can attach a reference embedding on top.
 """
 
 from __future__ import annotations
@@ -21,12 +22,15 @@ import torch
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, Dataset
 
-DATA_DIR = os.environ.get("MMAE_DATA_DIR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data_cache"))
+DATA_DIR = os.environ.get(
+    "MMAE_DATA_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "data_cache"),
+)
 
 
 @dataclass
 class Bundle:
-    X_train: np.ndarray  # (N, D) float32
+    X_train: np.ndarray  # (N, D) float32 in roughly [-1, 1]
     X_val: np.ndarray
     X_test: np.ndarray
     y_train: np.ndarray
@@ -37,21 +41,27 @@ class Bundle:
 
 
 # --------------------------------------------------------------------------- #
-# Per-dataset loaders                                                          #
+# Normalization helpers                                                        #
 # --------------------------------------------------------------------------- #
 
-def _normalize(train, val, test):
-    """Standardize each feature using train statistics."""
+def _normalize_symmetric(train, val, test):
+    """Center and scale data to roughly [-1, 1].
+
+    Uses the global min/max of the *training* set. Train ends up exactly in
+    [-1, 1]; val/test may slightly exceed if their range is larger, which is
+    fine since the Tanh decoder will saturate.
+    """
     flat_train = train.reshape(len(train), -1)
-    mean = flat_train.mean(axis=0, keepdims=True)
-    std = flat_train.std(axis=0, keepdims=True)
-    std[std == 0] = 1.0
+    lo = float(flat_train.min())
+    hi = float(flat_train.max())
+    midpoint = (lo + hi) / 2.0
+    half_range = (hi - lo) / 2.0 + 1e-8
     out_shape = train.shape[1:]
-    return (
-        ((train.reshape(len(train), -1) - mean) / std).reshape(-1, *out_shape).astype(np.float32),
-        ((val.reshape(len(val), -1) - mean) / std).reshape(-1, *out_shape).astype(np.float32),
-        ((test.reshape(len(test), -1) - mean) / std).reshape(-1, *out_shape).astype(np.float32),
-    )
+
+    def _apply(x):
+        return ((x.reshape(len(x), -1) - midpoint) / half_range).reshape(-1, *out_shape).astype(np.float32)
+
+    return _apply(train), _apply(val), _apply(test)
 
 
 def _split(data, labels, seed=42, stratify=True):
@@ -66,6 +76,10 @@ def _split(data, labels, seed=42, stratify=True):
     return X_train, X_val, X_test, y_train, y_val, y_test
 
 
+# --------------------------------------------------------------------------- #
+# Per-dataset loaders                                                          #
+# --------------------------------------------------------------------------- #
+
 def load_mnist_like(name: str, n_samples: Optional[int] = None, seed: int = 42) -> Bundle:
     from torchvision import datasets
 
@@ -75,9 +89,10 @@ def load_mnist_like(name: str, n_samples: Optional[int] = None, seed: int = 42) 
     train_set = cls(root=raw_dir, train=True, download=True)
     test_set = cls(root=raw_dir, train=False, download=True)
 
-    X_train_full = train_set.data.numpy().astype(np.float32) / 255.0
+    # Map [0, 255] -> [-1, 1] directly (matches Tanh decoder).
+    X_train_full = train_set.data.numpy().astype(np.float32) / 127.5 - 1.0
     y_train_full = train_set.targets.numpy().astype(np.int64)
-    X_test = test_set.data.numpy().astype(np.float32) / 255.0
+    X_test = test_set.data.numpy().astype(np.float32) / 127.5 - 1.0
     y_test = test_set.targets.numpy().astype(np.int64)
 
     rng = np.random.RandomState(seed)
@@ -96,7 +111,6 @@ def load_mnist_like(name: str, n_samples: Optional[int] = None, seed: int = 42) 
     test_idx = rng.choice(len(X_test), n_test, replace=False)
     X_test, y_test = X_test[test_idx], y_test[test_idx]
 
-    X_train, X_val, X_test = _normalize(X_train, X_val, X_test)
     X_train = X_train.reshape(len(X_train), -1)
     X_val = X_val.reshape(len(X_val), -1)
     X_test = X_test.reshape(len(X_test), -1)
@@ -128,18 +142,18 @@ def load_spheres(n_samples_per_sphere: int = 500, n_spheres: int = 11,
     labels = np.concatenate(labels, axis=0)
 
     X_train, X_val, X_test, y_train, y_val, y_test = _split(data, labels, seed=seed, stratify=True)
-    X_train, X_val, X_test = _normalize(X_train, X_val, X_test)
+    X_train, X_val, X_test = _normalize_symmetric(X_train, X_val, X_test)
     return Bundle(X_train, X_val, X_test, y_train, y_val, y_test, X_train.shape[1], "spheres")
 
 
 def load_mammoth(n_samples: Optional[int] = 50000, seed: int = 42) -> Bundle:
-    """3D Smithsonian mammoth point cloud."""
+    """3D Smithsonian mammoth point cloud, scaled to roughly [-1, 1]."""
     url = "https://raw.githubusercontent.com/MNoichl/UMAP-examples-mammoth/master/mammoth_a.csv"
     cache_dir = os.path.join(DATA_DIR, "raw")
     os.makedirs(cache_dir, exist_ok=True)
     cache = os.path.join(cache_dir, "mammoth.csv")
     if not os.path.exists(cache):
-        print(f"Downloading mammoth dataset from {url} …")
+        print(f"Downloading mammoth dataset from {url} ...")
         urllib.request.urlretrieve(url, cache)
 
     import pandas as pd
@@ -159,13 +173,7 @@ def load_mammoth(n_samples: Optional[int] = 50000, seed: int = 42) -> Bundle:
     except ValueError:
         X_train, X_val, X_test, y_train, y_val, y_test = _split(data, labels, seed=seed, stratify=False)
 
-    # Center + uniformly scale (preserves shape proportions).
-    mean = X_train.mean(axis=0)
-    scale = np.abs(X_train - mean).max() + 1e-8
-    X_train = ((X_train - mean) / scale).astype(np.float32)
-    X_val = ((X_val - mean) / scale).astype(np.float32)
-    X_test = ((X_test - mean) / scale).astype(np.float32)
-
+    X_train, X_val, X_test = _normalize_symmetric(X_train, X_val, X_test)
     return Bundle(X_train, X_val, X_test, y_train, y_val, y_test, 3, "mammoth")
 
 
