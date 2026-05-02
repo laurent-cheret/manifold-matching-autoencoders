@@ -5,16 +5,26 @@ import torch.nn as nn
 
 
 class MLPEncoder(nn.Module):
-    """Simple MLP encoder for flat-vector inputs."""
+    """MLP encoder for flat-vector inputs.
 
-    def __init__(self, input_dim, latent_dim, hidden_dims=(512, 256, 128)):
+    Each hidden block is `Linear -> BatchNorm1d -> ReLU` when `batchnorm=True`.
+    The final bottleneck Linear has no BN/activation: its output IS the latent
+    code, fed to both the decoder and the manifold-matching loss; normalizing
+    it would distort the latent geometry.
+    """
+
+    def __init__(self, input_dim, latent_dim, hidden_dims=(512, 256, 128),
+                 batchnorm: bool = True):
         super().__init__()
         layers = []
         in_dim = input_dim
         for h in hidden_dims:
-            layers += [nn.Linear(in_dim, h), nn.ReLU(inplace=True)]
+            layers.append(nn.Linear(in_dim, h))
+            if batchnorm:
+                layers.append(nn.BatchNorm1d(h))
+            layers.append(nn.ReLU(inplace=True))
             in_dim = h
-        layers.append(nn.Linear(in_dim, latent_dim))
+        layers.append(nn.Linear(in_dim, latent_dim))  # no BN/activation here
         self.net = nn.Sequential(*layers)
 
     def forward(self, x):
@@ -24,16 +34,25 @@ class MLPEncoder(nn.Module):
 
 
 class MLPDecoder(nn.Module):
-    """Symmetric MLP decoder."""
+    """Symmetric MLP decoder.
 
-    def __init__(self, latent_dim, output_dim, hidden_dims=(512, 256, 128)):
+    BN sits between hidden layers only. The final Linear (reconstruction
+    output) has no BN/activation -- the reconstruction loss compares it
+    directly to the standardized input.
+    """
+
+    def __init__(self, latent_dim, output_dim, hidden_dims=(512, 256, 128),
+                 batchnorm: bool = True):
         super().__init__()
         layers = []
         in_dim = latent_dim
         for h in reversed(hidden_dims):
-            layers += [nn.Linear(in_dim, h), nn.ReLU(inplace=True)]
+            layers.append(nn.Linear(in_dim, h))
+            if batchnorm:
+                layers.append(nn.BatchNorm1d(h))
+            layers.append(nn.ReLU(inplace=True))
             in_dim = h
-        layers.append(nn.Linear(in_dim, output_dim))
+        layers.append(nn.Linear(in_dim, output_dim))  # no BN/activation here
         self.net = nn.Sequential(*layers)
 
     def forward(self, z):
@@ -69,17 +88,22 @@ class Autoencoder(nn.Module):
     forward(x, ref=None) returns (total_loss, components_dict). When `ref` is
     provided and regularizer == 'mmae', the loss is
     `recon_mse + lam * manifold_matching_loss(z, ref, normalize=mm_normalize)`.
+
+    BatchNorm is on by default (between hidden layers); pass `batchnorm=False`
+    for the un-normalized network.
     """
 
     def __init__(self, input_dim, latent_dim, hidden_dims=(512, 256, 128),
-                 regularizer="mmae", lam=1.0, mm_normalize: bool = True):
+                 regularizer="mmae", lam=1.0, mm_normalize: bool = True,
+                 batchnorm: bool = True):
         super().__init__()
         assert regularizer in ("none", "mmae"), f"unknown regularizer: {regularizer}"
-        self.encoder = MLPEncoder(input_dim, latent_dim, hidden_dims)
-        self.decoder = MLPDecoder(latent_dim, input_dim, hidden_dims)
+        self.encoder = MLPEncoder(input_dim, latent_dim, hidden_dims, batchnorm=batchnorm)
+        self.decoder = MLPDecoder(latent_dim, input_dim, hidden_dims, batchnorm=batchnorm)
         self.regularizer = regularizer
         self.lam = lam
         self.mm_normalize = mm_normalize
+        self.batchnorm = batchnorm
         self.recon_loss = nn.MSELoss()
 
     def encode(self, x):

@@ -47,6 +47,9 @@ def parse_args():
                    help="How to compare pairwise distances. 'zscore' standardizes "
                         "both distance matrices (scale-invariant; default). 'none' "
                         "matches raw Euclidean distances directly.")
+    p.add_argument("--batchnorm", choices=["on", "off"], default="on",
+                   help="BatchNorm1d between hidden Linear layers (default: on). "
+                        "Never applied to the bottleneck or reconstruction outputs.")
 
     p.add_argument("--latent_dim", type=int, default=2)
     p.add_argument("--hidden_dims", type=int, nargs="+", default=[512, 256, 128])
@@ -86,6 +89,7 @@ def main():
         ref_dim=args.ref_dim,
         lam=args.lam,
         mm_normalize=(args.mm_normalize == "zscore"),
+        batchnorm=(args.batchnorm == "on"),
         latent_dim=args.latent_dim,
         hidden_dims=tuple(args.hidden_dims),
         epochs=args.epochs,
