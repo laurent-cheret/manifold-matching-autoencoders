@@ -15,7 +15,7 @@ venv/
 env/
 
 # Data (auto-downloaded at runtime)
-data/raw/
+data_cache/
 
 # Experiment outputs
 results/
