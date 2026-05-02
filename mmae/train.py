@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Optional
 
 import numpy as np
@@ -26,8 +26,13 @@ class Result:
     model: Autoencoder
     bundle: Bundle
     history: dict
-    snapshots: list
+    snapshots: list                       # list of (epoch, z, y) on snapshot_split
     device: str
+    reference_method: Optional[str] = None  # 'pca' | 'umap' | 'tsne' | None
+    ref_train: Optional[np.ndarray] = None  # reference embedding of training set
+    ref_val: Optional[np.ndarray] = None
+    ref_test: Optional[np.ndarray] = None
+    snapshot_split: str = "test"
 
 
 def _encode_dataset(model, X, device, batch_size=512):
@@ -70,16 +75,18 @@ def train_run(
         kwargs["n_samples"] = n_samples
     bundle = load_dataset(dataset, **kwargs)
 
-    ref_train, ref_eval = None, [None, None]
+    # Reference embedding (only when regularizer is on).
+    ref_train, ref_val, ref_test = None, None, None
+    ref_method_used = None
     if regularizer == "mmae":
+        ref_method_used = reference
         if verbose:
             print(f"Computing {reference.upper()} reference (dim={ref_dim}) on training set ...")
         ref_train, ref_eval = compute_reference(
             bundle.X_train, method=reference, dim=ref_dim, seed=seed,
             X_eval=[bundle.X_val, bundle.X_test],
         )
-    ref_val = ref_eval[0] if ref_eval else None
-    ref_test = ref_eval[1] if ref_eval else None
+        ref_val, ref_test = ref_eval[0], ref_eval[1]
 
     train_loader, val_loader, test_loader = make_loaders(
         bundle, ref_train=ref_train, ref_val=ref_val, ref_test=ref_test, batch_size=batch_size,
@@ -153,4 +160,9 @@ def train_run(
                 msg += f"  recon={history['train_recon'][-1]:.4f}  mm={history['train_mm'][-1]:.4f}"
             print(msg)
 
-    return Result(model=model, bundle=bundle, history=history, snapshots=snapshots, device=device)
+    return Result(
+        model=model, bundle=bundle, history=history, snapshots=snapshots, device=device,
+        reference_method=ref_method_used,
+        ref_train=ref_train, ref_val=ref_val, ref_test=ref_test,
+        snapshot_split=snapshot_split,
+    )

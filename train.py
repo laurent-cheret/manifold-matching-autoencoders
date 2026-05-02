@@ -15,8 +15,9 @@ Examples
     # MMAE with 2D t-SNE reference
     python train.py --dataset spheres --reference tsne --ref_dim 2
 
-    # Save a per-epoch GIF of the latent space (mammoth defaults to 50k pts)
-    python train.py --dataset mammoth --epochs 80 --gif --snapshot_every 1
+    # 3D PCA reference + 3D latent for mammoth, side-by-side comparison GIF
+    python train.py --dataset mammoth --latent_dim 3 --ref_dim 3 \
+                    --epochs 80 --gif --snapshot_every 1
 
     # Use the full mammoth dataset (~1M points; needs GPU)
     python train.py --dataset mammoth --n_samples 0 --epochs 30
@@ -39,7 +40,7 @@ def parse_args():
     p.add_argument("--reference", choices=["pca", "umap", "tsne"], default="pca",
                    help="Reference embedding for the manifold-matching loss")
     p.add_argument("--ref_dim", type=int, default=2,
-                   help="Dimensionality of the reference embedding")
+                   help="Dimensionality of the reference embedding (2 or 3 used for plotting)")
     p.add_argument("--lam", type=float, default=1.0,
                    help="Weight on the manifold-matching term (lambda)")
 
@@ -62,6 +63,8 @@ def parse_args():
     p.add_argument("--snapshot_every", type=int, default=0,
                    help="Capture latent embedding every N epochs (>0 required for --gif)")
     p.add_argument("--gif_fps", type=int, default=8)
+    p.add_argument("--no_compare", action="store_true",
+                   help="Disable side-by-side reference panel in plot/GIF")
     return p.parse_args()
 
 
@@ -117,12 +120,23 @@ def main():
 
     title = f"{args.dataset} - {args.regularizer}"
     if args.regularizer == "mmae":
-        title += f" - {args.reference}{args.ref_dim}"
+        title += f" - latent ({args.latent_dim}D)"
+
+    # Show side-by-side reference comparison if we have a reference (regularizer=mmae)
+    # and the user didn't disable it.
+    ref_panel_kwargs = {}
+    if (not args.no_compare) and result.ref_test is not None:
+        ref_panel_kwargs = {
+            "reference": result.ref_test,
+            "reference_y": result.bundle.y_test,
+            "reference_title": f"{args.reference} reference ({args.ref_dim}D)",
+        }
 
     plot_path = plot_latents(
         final_z, final_y,
         save_path=os.path.join(out_dir, "latent.png"),
         title=title,
+        **ref_panel_kwargs,
     )
     print(f"Saved final latent plot to {plot_path}")
 
@@ -131,6 +145,7 @@ def main():
         make_latent_gif(
             result.snapshots, gif_path, fps=args.gif_fps,
             title_prefix=f"{args.dataset} - {args.regularizer}",
+            **ref_panel_kwargs,
         )
         print(f"Saved latent-evolution GIF to {gif_path}")
 
