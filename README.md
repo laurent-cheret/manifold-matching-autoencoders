@@ -63,7 +63,7 @@ with `latent.png`, `history.json`, and (if `--gif`) `latent_evolution.gif`.
 | `mnist`   | torchvision (auto-downloads)            | 784             | Subsampled to ~20k train |
 | `fmnist`  | torchvision (auto-downloads)            | 784             | Subsampled to ~20k train |
 | `spheres` | synthetic (TopoAE-style nested spheres) | 101             | 11 spheres in 100+1 dims |
-| `mammoth` | Smithsonian 3D scan (auto-downloads)    | 3               | Subsampled to ~10k pts   |
+| `mammoth` | Smithsonian 3D scan (auto-downloads)    | 3               | ~1M pts; default subsample 50k (use `--n_samples 0` for full set) |
 
 ---
 

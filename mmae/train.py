@@ -26,7 +26,7 @@ class Result:
     model: Autoencoder
     bundle: Bundle
     history: dict
-    snapshots: list  # list of (epoch, np.ndarray latent (N, latent_dim), np.ndarray labels)
+    snapshots: list
     device: str
 
 
@@ -42,8 +42,8 @@ def _encode_dataset(model, X, device, batch_size=512):
 
 def train_run(
     dataset: str = "mnist",
-    regularizer: str = "mmae",       # 'mmae' | 'none'
-    reference: str = "pca",          # 'pca' | 'umap' | 'tsne'
+    regularizer: str = "mmae",
+    reference: str = "pca",
     ref_dim: int = 2,
     lam: float = 1.0,
     latent_dim: int = 2,
@@ -54,9 +54,9 @@ def train_run(
     weight_decay: float = 1e-5,
     seed: int = 42,
     device: str = "auto",
-    snapshot_every: int = 0,         # 0 = disabled, N = capture latents on test set every N epochs
-    snapshot_split: str = "test",    # 'test' | 'train'
-    n_samples: Optional[int] = None, # forwarded to image-dataset loaders
+    snapshot_every: int = 0,
+    snapshot_split: str = "test",
+    n_samples: Optional[int] = None,
     verbose: bool = True,
 ) -> Result:
     """Run a full training session and return model + history (+ snapshots)."""
@@ -65,17 +65,15 @@ def train_run(
 
     set_seed(seed)
 
-    # --- Load data --------------------------------------------------------- #
     kwargs = {"seed": seed}
-    if dataset in ("mnist", "fmnist") and n_samples is not None:
+    if n_samples is not None and dataset in ("mnist", "fmnist", "mammoth"):
         kwargs["n_samples"] = n_samples
     bundle = load_dataset(dataset, **kwargs)
 
-    # --- Compute reference embedding (only if needed) ---------------------- #
     ref_train, ref_eval = None, [None, None]
     if regularizer == "mmae":
         if verbose:
-            print(f"Computing {reference.upper()} reference (dim={ref_dim}) on training set …")
+            print(f"Computing {reference.upper()} reference (dim={ref_dim}) on training set ...")
         ref_train, ref_eval = compute_reference(
             bundle.X_train, method=reference, dim=ref_dim, seed=seed,
             X_eval=[bundle.X_val, bundle.X_test],
@@ -87,7 +85,6 @@ def train_run(
         bundle, ref_train=ref_train, ref_val=ref_val, ref_test=ref_test, batch_size=batch_size,
     )
 
-    # --- Build model ------------------------------------------------------- #
     model = Autoencoder(
         input_dim=bundle.input_dim, latent_dim=latent_dim,
         hidden_dims=hidden_dims, regularizer=regularizer, lam=lam,
@@ -102,7 +99,6 @@ def train_run(
             f"batch_size={batch_size} | lr={lr} | params={n_params:,} | device={device}"
         )
 
-    # --- Snapshots: pick the array we'll keep encoding each epoch --------- #
     snap_X, snap_y = (
         (bundle.X_test, bundle.y_test) if snapshot_split == "test"
         else (bundle.X_train, bundle.y_train)
@@ -112,7 +108,6 @@ def train_run(
         z0 = _encode_dataset(model, snap_X, device)
         snapshots.append((0, z0, snap_y.copy()))
 
-    # --- Training loop ----------------------------------------------------- #
     history = {"train_total": [], "train_recon": [], "train_mm": [],
                "val_total": [], "val_recon": [], "val_mm": []}
 
@@ -134,7 +129,6 @@ def train_run(
         history["train_recon"].append(float(np.mean(agg["recon"])) if agg["recon"] else float("nan"))
         history["train_mm"].append(float(np.mean(agg["mm"])) if agg["mm"] else float("nan"))
 
-        # Validation
         model.eval()
         v_agg = {"total": [], "recon": [], "mm": []}
         with torch.no_grad():
@@ -149,7 +143,6 @@ def train_run(
         history["val_recon"].append(float(np.mean(v_agg["recon"])) if v_agg["recon"] else float("nan"))
         history["val_mm"].append(float(np.mean(v_agg["mm"])) if v_agg["mm"] else float("nan"))
 
-        # Per-epoch snapshot
         if snapshot_every and (epoch % snapshot_every == 0 or epoch == epochs):
             z = _encode_dataset(model, snap_X, device)
             snapshots.append((epoch, z, snap_y.copy()))

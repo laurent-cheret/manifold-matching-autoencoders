@@ -15,8 +15,11 @@ Examples
     # MMAE with 2D t-SNE reference
     python train.py --dataset spheres --reference tsne --ref_dim 2
 
-    # Save a per-epoch GIF of the latent space
+    # Save a per-epoch GIF of the latent space (mammoth defaults to 50k pts)
     python train.py --dataset mammoth --epochs 80 --gif --snapshot_every 1
+
+    # Use the full mammoth dataset (~1M points; needs GPU)
+    python train.py --dataset mammoth --n_samples 0 --epochs 30
 """
 
 import argparse
@@ -49,7 +52,8 @@ def parse_args():
     p.add_argument("--seed", type=int, default=42)
     p.add_argument("--device", default="auto", help="'cuda', 'cpu', or 'auto'")
     p.add_argument("--n_samples", type=int, default=None,
-                   help="For mnist/fmnist: cap training-pool size")
+                   help="Cap training-pool size (mnist/fmnist/mammoth). "
+                        "Pass 0 to use the full dataset.")
 
     p.add_argument("--output_dir", default="results")
     p.add_argument("--no_save", action="store_true")
@@ -64,9 +68,11 @@ def parse_args():
 def main():
     args = parse_args()
 
-    # If --gif was passed without snapshot_every, default to every epoch.
     if args.gif and args.snapshot_every <= 0:
         args.snapshot_every = 1
+
+    if args.n_samples == 0:
+        args.n_samples = None
 
     start = time.time()
     result = train_run(
@@ -98,24 +104,25 @@ def main():
     out_dir = os.path.join(args.output_dir, run_name)
     os.makedirs(out_dir, exist_ok=True)
 
-    # Save metrics + final latent plot.
     with open(os.path.join(out_dir, "history.json"), "w") as f:
         json.dump(result.history, f, indent=2)
 
     final_z = result.snapshots[-1][1] if result.snapshots else None
     if final_z is None:
-        # No snapshots: encode test set once for the final plot.
         from mmae.train import _encode_dataset
         final_z = _encode_dataset(result.model, result.bundle.X_test, result.device)
         final_y = result.bundle.y_test
     else:
         final_y = result.snapshots[-1][2]
 
+    title = f"{args.dataset} - {args.regularizer}"
+    if args.regularizer == "mmae":
+        title += f" - {args.reference}{args.ref_dim}"
+
     plot_path = plot_latents(
         final_z, final_y,
         save_path=os.path.join(out_dir, "latent.png"),
-        title=f"{args.dataset} · {args.regularizer}"
-              + (f" · {args.reference}{args.ref_dim}" if args.regularizer == "mmae" else ""),
+        title=title,
     )
     print(f"Saved final latent plot to {plot_path}")
 
@@ -123,7 +130,7 @@ def main():
         gif_path = os.path.join(out_dir, "latent_evolution.gif")
         make_latent_gif(
             result.snapshots, gif_path, fps=args.gif_fps,
-            title_prefix=f"{args.dataset} · {args.regularizer}",
+            title_prefix=f"{args.dataset} - {args.regularizer}",
         )
         print(f"Saved latent-evolution GIF to {gif_path}")
 

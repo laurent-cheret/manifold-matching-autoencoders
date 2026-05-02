@@ -132,7 +132,7 @@ def load_spheres(n_samples_per_sphere: int = 500, n_spheres: int = 11,
     return Bundle(X_train, X_val, X_test, y_train, y_val, y_test, X_train.shape[1], "spheres")
 
 
-def load_mammoth(n_samples: Optional[int] = 10000, seed: int = 42) -> Bundle:
+def load_mammoth(n_samples: Optional[int] = 50000, seed: int = 42) -> Bundle:
     """3D Smithsonian mammoth point cloud."""
     url = "https://raw.githubusercontent.com/MNoichl/UMAP-examples-mammoth/master/mammoth_a.csv"
     cache_dir = os.path.join(DATA_DIR, "raw")
