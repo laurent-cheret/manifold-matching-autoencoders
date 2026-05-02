@@ -66,7 +66,7 @@ def _split(data, labels, seed=42, stratify=True):
     return X_train, X_val, X_test, y_train, y_val, y_test
 
 
-def load_mnist_like(name: str, n_samples: Optional[int] = 20000, seed: int = 42) -> Bundle:
+def load_mnist_like(name: str, n_samples: Optional[int] = None, seed: int = 42) -> Bundle:
     from torchvision import datasets
 
     cls = {"mnist": datasets.MNIST, "fmnist": datasets.FashionMNIST}[name]

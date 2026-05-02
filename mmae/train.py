@@ -72,7 +72,8 @@ def train_run(
 
     kwargs = {"seed": seed}
     if n_samples is not None and dataset in ("mnist", "fmnist", "mammoth"):
-        kwargs["n_samples"] = n_samples
+        # n_samples<=0 means "use the full dataset" -> pass None to skip subsampling.
+        kwargs["n_samples"] = None if n_samples <= 0 else n_samples
     bundle = load_dataset(dataset, **kwargs)
 
     # Reference embedding (only when regularizer is on).

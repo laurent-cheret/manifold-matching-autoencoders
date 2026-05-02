@@ -74,9 +74,6 @@ def main():
     if args.gif and args.snapshot_every <= 0:
         args.snapshot_every = 1
 
-    if args.n_samples == 0:
-        args.n_samples = None
-
     start = time.time()
     result = train_run(
         dataset=args.dataset,
